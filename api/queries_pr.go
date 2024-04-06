@@ -607,6 +607,20 @@ func UpdatePullRequestReviews(client *Client, repo ghrepo.Interface, params gith
 	return err
 }
 
+func UpdatePullRequestBranch(client *Client, repo ghrepo.Interface, params githubv4.UpdatePullRequestBranchInput) (string, error) {
+	var mutation struct {
+		UpdatePullRequestBranch struct {
+			PullRequest struct {
+				ID         string
+				HeadRefOid string
+			}
+		} `graphql:"updatePullRequestBranch(input: $input)"`
+	}
+	variables := map[string]interface{}{"input": params}
+	err := client.Mutate(repo.RepoHost(), "PullRequestUpdateBranch", &mutation, variables)
+	return mutation.UpdatePullRequestBranch.PullRequest.HeadRefOid, err
+}
+
 func isBlank(v interface{}) bool {
 	switch vv := v.(type) {
 	case string:
