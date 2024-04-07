@@ -51,15 +51,16 @@ func NewCmdUpdate(f *cmdutil.Factory, runF func(*UpdateOptions) error) *cobra.Co
 
 			Without an argument, the pull request that belongs to the current branch is selected.
 
-			The default behavior is to update with a merge (i.e., merging the base branch into the
-			the PR's branch). To reconcile the changes with rebasing on top of the base branch the
-			%[1]s--rebase%[1]s option should be provided.
+			The default behavior is to update with a merge commit (i.e., merging the base branch
+			into the the PR's branch). To reconcile the changes with rebasing on top of the base
+			branch, the %[1]s--rebase%[1]s option should be provided.
 
 			If the current local branch tracks the PR branch, the command will prompt for pulling
 			the latest changes. To skip the prompt, either one of %[1]s--update-local%[1]s or
 			%[1]s--skip-local%[1]s options should be provided.
 			
-			In non-interactive mode, the command will not update the local branch.
+			In non-interactive mode the command will not update the local branch by default, unless
+			the %[1]s--update-local%[1]s option was set.
 		`, "`"),
 		Example: heredoc.Doc(`
 			$ gh pr update 23"
