@@ -92,6 +92,8 @@ func NewCmdUpdate(f *cmdutil.Factory, runF func(*UpdateOptions) error) *cobra.Co
 				return err
 			}
 
+			opts.Interactive = opts.IO.CanPrompt()
+
 			if runF != nil {
 				return runF(opts)
 			}
@@ -183,10 +185,6 @@ func updateRun(opts *UpdateOptions) error {
 	}
 
 	if opts.Interactive && !opts.UpdateLocal {
-		if !opts.IO.CanPrompt() {
-			return nil
-		}
-
 		confirm, err := opts.Prompter.Confirm("Update branch locally?", true)
 		if err != nil {
 			return err
