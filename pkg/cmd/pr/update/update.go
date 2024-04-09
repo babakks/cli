@@ -147,8 +147,9 @@ func updateRun(opts *UpdateOptions) error {
 	}
 
 	params := githubv4.UpdatePullRequestBranchInput{
-		PullRequestID: pr.ID,
-		UpdateMethod:  &updateMethod,
+		PullRequestID:   pr.ID,
+		ExpectedHeadOid: (*githubv4.GitObjectID)(&pr.HeadRefOid),
+		UpdateMethod:    &updateMethod,
 	}
 
 	httpClient, err := opts.HttpClient()
