@@ -65,10 +65,10 @@ func NewCmdUpdate(f *cmdutil.Factory, runF func(*UpdateOptions) error) *cobra.Co
 			the %[1]s--update-local%[1]s option was set.
 		`, "`"),
 		Example: heredoc.Doc(`
-			$ gh pr update 23"
-			$ gh pr update 23 --update-local"
-			$ gh pr update 23 --skip-local"
-			$ gh pr update 23 --rebase"
+			$ gh pr update 23
+			$ gh pr update 23 --update-local
+			$ gh pr update 23 --skip-local
+			$ gh pr update 23 --rebase
 		`),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
