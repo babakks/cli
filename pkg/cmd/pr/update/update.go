@@ -2,6 +2,7 @@ package update
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/cli/cli/v2/api"
 	ghContext "github.com/cli/cli/v2/context"
 	"github.com/cli/cli/v2/git"
+	"github.com/cli/cli/v2/internal/ghrepo"
 	shared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
 	"github.com/cli/cli/v2/pkg/iostreams"
@@ -118,6 +120,7 @@ func updateRun(opts *UpdateOptions) error {
 		Selector: opts.SelectorArg,
 		Fields:   []string{"id", "headRefName", "headRefOid"},
 	}
+
 	pr, repo, err := opts.Finder.Find(findOptions)
 	if err != nil {
 		return err
@@ -130,9 +133,10 @@ func updateRun(opts *UpdateOptions) error {
 
 	cs := opts.IO.ColorScheme()
 
+	// If the command is run with `--update-local`, we need to make sure it's
+	// being run on the right branch, so that we can update the local with
+	// `git pull` at the end.
 	if opts.UpdateLocal {
-		// We need to make sure the command is run on the right branch, so that we
-		// can update the local with `git pull`.
 		if currentBranch != pr.HeadRefName {
 			return fmt.Errorf("current branch does not track the PR branch; consider switching to the correct branch or running the command without the `--update-local` option")
 		}
@@ -141,24 +145,13 @@ func updateRun(opts *UpdateOptions) error {
 		}
 	}
 
-	updateMethod := githubv4.PullRequestBranchUpdateMethodMerge
-	if opts.Rebase {
-		updateMethod = githubv4.PullRequestBranchUpdateMethodRebase
-	}
-
-	params := githubv4.UpdatePullRequestBranchInput{
-		PullRequestID:   pr.ID,
-		ExpectedHeadOid: (*githubv4.GitObjectID)(&pr.HeadRefOid),
-		UpdateMethod:    &updateMethod,
-	}
-
 	httpClient, err := opts.HttpClient()
 	if err != nil {
 		return err
 	}
 	apiClient := api.NewClientFromHTTP(httpClient)
 
-	updatedHeadRefOid, err := api.UpdatePullRequestBranch(apiClient, repo, params)
+	updatedHeadRefOid, err := updatePullRequestBranch(apiClient, repo, pr.ID, pr.HeadRefOid, opts.Rebase)
 	if err != nil {
 		return err
 	}
@@ -170,12 +163,18 @@ func updateRun(opts *UpdateOptions) error {
 
 	fmt.Fprintf(opts.IO.ErrOut, "%s PR branch updated\n", cs.SuccessIcon())
 
-	if opts.Rebase && opts.GitClient.HasLocalBranch(ctx, pr.HeadRefName) {
-		fmt.Fprintf(opts.IO.ErrOut, "%s warning: due to rebase, you need to manually pull the latest changes to the local branch\n", cs.WarningIcon())
+	// When the command is run with `--rebase`, we don't try to update the local.
+	// However, if there's a local branch that tracks the PR branch, we issue a
+	// warning to inform user about changes.
+	if opts.Rebase {
+		if opts.GitClient.HasLocalBranch(ctx, pr.HeadRefName) {
+			fmt.Fprintf(opts.IO.ErrOut, "%s warning: due to rebase, you need to manually pull the latest changes to the local branch\n", cs.WarningIcon())
+			return nil
+		}
 		return nil
 	}
 
-	if opts.Rebase || opts.SkipLocal || !opts.Interactive && !opts.UpdateLocal {
+	if opts.SkipLocal || !opts.Interactive && !opts.UpdateLocal {
 		return nil
 	}
 
@@ -197,20 +196,40 @@ func updateRun(opts *UpdateOptions) error {
 
 	remotes, err := opts.Remotes()
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot update local branch; %s", err)
 	}
 
 	remote, err := remotes.FindByRepo(repo.RepoOwner(), repo.RepoName())
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot update local branch; %s", err)
 	}
 
 	if err := opts.GitClient.Pull(context.Background(), remote.Name, pr.HeadRefName); err != nil {
-		fmt.Fprintf(opts.IO.ErrOut, "%s cannot update local branch\n", cs.FailureIcon())
-		return err
+		return errors.New("cannot update local branch; running git pull failed")
 	}
 
 	fmt.Fprintf(opts.IO.ErrOut, "%s local branch updated\n", cs.SuccessIcon())
 
 	return nil
+}
+
+// updatePullRequestBranch calls the GraphQL API endpoint to update the given PR
+// branch with latest changes of its base, and returns the updated HeadRefOid.
+func updatePullRequestBranch(apiClient *api.Client, repo ghrepo.Interface, pullRequestID string, expectedHeadOid string, updateWithRebase bool) (string, error) {
+	updateMethod := githubv4.PullRequestBranchUpdateMethodMerge
+	if updateWithRebase {
+		updateMethod = githubv4.PullRequestBranchUpdateMethodRebase
+	}
+
+	params := githubv4.UpdatePullRequestBranchInput{
+		PullRequestID:   pullRequestID,
+		ExpectedHeadOid: (*githubv4.GitObjectID)(&expectedHeadOid),
+		UpdateMethod:    &updateMethod,
+	}
+
+	updatedHeadRefOid, err := api.UpdatePullRequestBranch(apiClient, repo, params)
+	if err != nil {
+		return "", err
+	}
+	return updatedHeadRefOid, nil
 }
