@@ -458,3 +458,114 @@ func TestStructExportData(t *testing.T) {
 		})
 	}
 }
+
+type exportableOnPointer struct {
+	Foo string `json:"a_different_name_than_foo"`
+	Bar string `json:"a_different_name_than_bar"`
+}
+
+func (v *exportableOnPointer) ExportData(fields []string) map[string]interface{} {
+	return StructExportData(v, fields)
+}
+
+type exportableOnStruct struct {
+	Foo string `json:"a_different_name_than_foo"`
+	Bar string `json:"a_different_name_than_bar"`
+}
+
+func (v *exportableOnStruct) ExportData(fields []string) map[string]interface{} {
+	return StructExportData(v, fields)
+}
+
+func TestJSONExporterDetectsExportableImplementation(t *testing.T) {
+	tests := []struct {
+		name     string
+		value    interface{}
+		fields   []string
+		expected string
+	}{
+		{
+			name:     "struct, exportable struct type",
+			value:    exportableOnStruct{Foo: "foo", Bar: "bar"},
+			fields:   []string{"foo", "bar"},
+			expected: `{"foo":"foo","bar":"bar"}`,
+		},
+		{
+			name:     "struct pointer, exportable struct type",
+			value:    &exportableOnStruct{Foo: "foo", Bar: "bar"},
+			fields:   []string{"foo", "bar"},
+			expected: `{"foo":"foo","bar":"bar"}`,
+		},
+		{
+			name:     "slice T, exportable struct type",
+			value:    []exportableOnStruct{{Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `[{"foo":"foo","bar":"bar"}]`,
+		},
+		{
+			name:     "slice *T, exportable struct type",
+			value:    []*exportableOnStruct{{Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `[{"foo":"foo","bar":"bar"}]`,
+		},
+		{
+			name:     "map [string]T, exportable struct type",
+			value:    map[string]exportableOnStruct{"baz": {Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `{"baz":{"foo":"foo","bar":"bar"}}`,
+		},
+		{
+			name:     "map [string]*T, exportable struct type",
+			value:    map[string]*exportableOnStruct{"baz": {Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `{"baz":{"foo":"foo","bar":"bar"}}`,
+		},
+		{
+			name:     "struct, exportable pointer type",
+			value:    exportableOnPointer{Foo: "foo", Bar: "bar"},
+			fields:   []string{"foo", "bar"},
+			expected: `{"foo":"foo","bar":"bar"}`,
+		},
+		{
+			name:     "struct pointer, exportable pointer type",
+			value:    &exportableOnPointer{Foo: "foo", Bar: "bar"},
+			fields:   []string{"foo", "bar"},
+			expected: `{"foo":"foo","bar":"bar"}`,
+		},
+		{
+			name:     "slice T, exportable pointer type",
+			value:    []exportableOnPointer{{Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `[{"foo":"foo","bar":"bar"}]`,
+		},
+		{
+			name:     "slice *T, exportable pointer type",
+			value:    []*exportableOnPointer{{Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `[{"foo":"foo","bar":"bar"}]`,
+		},
+		{
+			name:     "map [string]T, exportable pointer type",
+			value:    map[string]exportableOnPointer{"baz": {Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `{"baz":{"foo":"foo","bar":"bar"}}`,
+		},
+		{
+			name:     "map [string]*T, exportable pointer type",
+			value:    map[string]*exportableOnPointer{"baz": {Foo: "foo", Bar: "bar"}},
+			fields:   []string{"foo", "bar"},
+			expected: `{"baz":{"foo":"foo","bar":"bar"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ios, _, stdout, _ := iostreams.Test()
+			exporter := NewJSONExporter()
+			exporter.SetFields(tt.fields)
+			exporter.Write(ios, tt.value)
+
+			assert.JSONEq(t, tt.expected, stdout.String())
+		})
+	}
+}
