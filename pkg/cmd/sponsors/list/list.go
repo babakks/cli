@@ -19,11 +19,18 @@ import (
 
 const defaultListLimit = 30
 
+var listFields = []string{
+	"login",
+	"name",
+}
+
 type ListOptions struct {
 	HttpClient func() (*http.Client, error)
 	IO         *iostreams.IOStreams
 	Config     func() (gh.Config, error)
 	Prompter   prompter.Prompter
+
+	Exporter cmdutil.Exporter
 
 	Username string
 }
@@ -58,6 +65,8 @@ func NewCmdList(f *cmdutil.Factory, runF func(*ListOptions) error) *cobra.Comman
 		},
 	}
 
+	cmdutil.AddJSONFlags(cmd, &opts.Exporter, listFields)
+
 	return cmd
 }
 
@@ -91,6 +100,10 @@ func listRun(opts *ListOptions) error {
 		return err
 	}
 
+	if opts.Exporter != nil {
+		return opts.Exporter.Write(opts.IO, sponsors)
+	}
+
 	if len(sponsors) == 0 {
 		return cmdutil.NewNoResultsError("no sponsor found")
 	}
@@ -98,7 +111,7 @@ func listRun(opts *ListOptions) error {
 	headers := []string{"Sponsor"}
 	table := tableprinter.New(opts.IO, tableprinter.WithHeader(headers...))
 	for _, sponsor := range sponsors {
-		table.AddField(sponsor)
+		table.AddField(sponsor.Login)
 		table.EndRow()
 	}
 
@@ -110,7 +123,16 @@ func listRun(opts *ListOptions) error {
 	return nil
 }
 
-func listSponsors(httpClient *http.Client, hostname string, username string, limit uint) ([]string, error) {
+type sponsor struct {
+	Login string
+	Name  string
+}
+
+func (s sponsor) ExportData(fields []string) map[string]interface{} {
+	return cmdutil.StructExportData(s, fields)
+}
+
+func listSponsors(httpClient *http.Client, hostname string, username string, limit uint) ([]sponsor, error) {
 	var query struct {
 		User struct {
 			Sponsors struct {
@@ -118,9 +140,11 @@ func listSponsors(httpClient *http.Client, hostname string, username string, lim
 					Node struct {
 						User struct {
 							Login githubv4.String
+							Name  githubv4.String
 						} `graphql:"... on User"`
 						Org struct {
 							Login githubv4.String
+							Name  githubv4.String
 						} `graphql:"... on Organization"`
 					}
 				}
@@ -140,12 +164,18 @@ func listSponsors(httpClient *http.Client, hostname string, username string, lim
 		return nil, err
 	}
 
-	result := make([]string, 0, len(query.User.Sponsors.Edges))
+	result := make([]sponsor, 0, len(query.User.Sponsors.Edges))
 	for _, edge := range query.User.Sponsors.Edges {
 		if edge.Node.User.Login != "" {
-			result = append(result, string(edge.Node.User.Login))
+			result = append(result, sponsor{
+				Login: string(edge.Node.User.Login),
+				Name:  string(edge.Node.User.Name),
+			})
 		} else if edge.Node.Org.Login != "" {
-			result = append(result, string(edge.Node.Org.Login))
+			result = append(result, sponsor{
+				Login: string(edge.Node.Org.Login),
+				Name:  string(edge.Node.Org.Name),
+			})
 		}
 	}
 	return result, nil
