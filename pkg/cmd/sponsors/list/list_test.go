@@ -39,6 +39,16 @@ func TestNewCmdList(t *testing.T) {
 			wants: ListOptions{
 				Username: "johndoe",
 			},
+		}, {
+			name: "normal json",
+			cli:  "--json name,login johndoe",
+			wants: ListOptions{
+				Username: "johndoe",
+			},
+		}, {
+			name:    "failure json",
+			cli:     "--json blah johndoe",
+			wantErr: "Unknown JSON field: \"blah\"\nAvailable fields:\n  login\n  name",
 		},
 	}
 
@@ -75,6 +85,61 @@ func TestNewCmdList(t *testing.T) {
 }
 
 func Test_listRun(t *testing.T) {
+	defaultHTTPStubs := func(t *testing.T, reg *httpmock.Registry) {
+		reg.Register(
+			httpmock.GraphQL(`query UserSponsorList\b`),
+			httpmock.GraphQLQuery(`
+				{
+					"data": {
+						"user": {
+							"sponsors": {
+								"edges": [
+									{
+										"node": {
+											"login": "foo",
+											"name": "Foo"
+										}
+									},
+									{
+										"node": {
+											"login": "bar",
+											"name": "Bar"
+										}
+									}
+								]
+							}
+						}
+					}
+				}`,
+				func(_ string, inputs map[string]interface{}) {
+					assert.Equal(t, "johndoe", inputs["login"])
+					assert.Equal(t, float64(30), inputs["limit"])
+				},
+			),
+		)
+	}
+
+	emptyRespHTTPStubs := func(t *testing.T, reg *httpmock.Registry) {
+		reg.Register(
+			httpmock.GraphQL(`query UserSponsorList\b`),
+			httpmock.GraphQLQuery(`
+				{
+					"data": {
+						"user": {
+							"sponsors": {
+								"edges": []
+							}
+						}
+					}
+				}`,
+				func(_ string, inputs map[string]interface{}) {
+					assert.Equal(t, "johndoe", inputs["login"])
+					assert.Equal(t, float64(30), inputs["limit"])
+				},
+			),
+		)
+	}
+
 	tests := []struct {
 		name          string
 		tty           bool
@@ -90,77 +155,17 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{
 				Username: "johndoe",
 			},
-			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query UserSponsorList\b`),
-					httpmock.GraphQLQuery(`
-						{
-							"data": {
-								"user": {
-									"sponsors": {
-										"edges": [
-											{
-												"node": {
-													"login": "foo"
-												}
-											},
-											{
-												"node": {
-													"login": "bar"
-												}
-											}
-										]
-									}
-								}
-							}
-						}`,
-						func(_ string, inputs map[string]interface{}) {
-							assert.Equal(t, "johndoe", inputs["login"])
-							assert.Equal(t, float64(30), inputs["limit"])
-						},
-					),
-				)
-			},
+			httpStubs: defaultHTTPStubs,
 			wantStdout: []string{
 				"SPONSOR",
 				"foo",
 				"bar",
 			},
 		}, {
-			name: "normal tty, no-username",
-			tty:  true,
-			opts: &ListOptions{},
-			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query UserSponsorList\b`),
-					httpmock.GraphQLQuery(`
-						{
-							"data": {
-								"user": {
-									"sponsors": {
-										"edges": [
-											{
-												"node": {
-													"login": "foo"
-												}
-											},
-											{
-												"node": {
-													"login": "bar"
-												}
-											}
-										]
-									}
-								}
-							}
-						}`,
-						func(_ string, inputs map[string]interface{}) {
-							assert.Equal(t, "johndoe", inputs["login"])
-							assert.Equal(t, float64(30), inputs["limit"])
-						},
-					),
-				)
-			},
+			name:      "normal tty, no-username",
+			tty:       true,
+			opts:      &ListOptions{},
+			httpStubs: defaultHTTPStubs,
 			prompterStubs: func(t *testing.T, pm *prompter.PrompterMock) {
 				pm.InputFunc = func(message, def string) (string, error) {
 					assert.Equal(t, "Which user do you want to target?", message)
@@ -179,41 +184,37 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{
 				Username: "johndoe",
 			},
-			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query UserSponsorList\b`),
-					httpmock.GraphQLQuery(`
-						{
-							"data": {
-								"user": {
-									"sponsors": {
-										"edges": [
-											{
-												"node": {
-													"login": "foo"
-												}
-											},
-											{
-												"node": {
-													"login": "bar"
-												}
-											}
-										]
-									}
-								}
-							}
-						}`,
-						func(_ string, inputs map[string]interface{}) {
-							assert.Equal(t, "johndoe", inputs["login"])
-							assert.Equal(t, float64(30), inputs["limit"])
-						},
-					),
-				)
-			},
+			httpStubs: defaultHTTPStubs,
 			wantStdout: []string{
 				"foo",
 				"bar",
 			},
+		}, {
+			name: "normal json",
+			tty:  false,
+			opts: &ListOptions{
+				Username: "johndoe",
+				Exporter: func() cmdutil.Exporter {
+					exporter := cmdutil.NewJSONExporter()
+					exporter.SetFields([]string{"login"})
+					return exporter
+				}(),
+			},
+			httpStubs:  defaultHTTPStubs,
+			wantStdout: []string{"[{\"login\":\"foo\"},{\"login\":\"bar\"}]"},
+		}, {
+			name: "normal json all fields",
+			tty:  false,
+			opts: &ListOptions{
+				Username: "johndoe",
+				Exporter: func() cmdutil.Exporter {
+					exporter := cmdutil.NewJSONExporter()
+					exporter.SetFields(listFields)
+					return exporter
+				}(),
+			},
+			httpStubs:  defaultHTTPStubs,
+			wantStdout: []string{"[{\"login\":\"foo\",\"name\":\"Foo\"},{\"login\":\"bar\",\"name\":\"Bar\"}]"},
 		}, {
 			name: "failure tty, prompt error",
 			tty:  true,
@@ -235,54 +236,16 @@ func Test_listRun(t *testing.T) {
 			opts: &ListOptions{
 				Username: "johndoe",
 			},
-			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query UserSponsorList\b`),
-					httpmock.GraphQLQuery(`
-						{
-							"data": {
-								"user": {
-									"sponsors": {
-										"edges": []
-									}
-								}
-							}
-						}`,
-						func(_ string, inputs map[string]interface{}) {
-							assert.Equal(t, "johndoe", inputs["login"])
-							assert.Equal(t, float64(30), inputs["limit"])
-						},
-					),
-				)
-			},
-			wantErr: "no sponsor found",
+			httpStubs: emptyRespHTTPStubs,
+			wantErr:   "no sponsor found",
 		}, {
 			name: "normal no-tty, no sponsor",
 			tty:  false,
 			opts: &ListOptions{
 				Username: "johndoe",
 			},
-			httpStubs: func(t *testing.T, reg *httpmock.Registry) {
-				reg.Register(
-					httpmock.GraphQL(`query UserSponsorList\b`),
-					httpmock.GraphQLQuery(`
-						{
-							"data": {
-								"user": {
-									"sponsors": {
-										"edges": []
-									}
-								}
-							}
-						}`,
-						func(_ string, inputs map[string]interface{}) {
-							assert.Equal(t, "johndoe", inputs["login"])
-							assert.Equal(t, float64(30), inputs["limit"])
-						},
-					),
-				)
-			},
-			wantErr: "no sponsor found",
+			httpStubs: emptyRespHTTPStubs,
+			wantErr:   "no sponsor found",
 		}, {
 			name: "api error",
 			tty:  true,
