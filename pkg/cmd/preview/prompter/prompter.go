@@ -48,6 +48,18 @@ func NewCmdPrompter(f *cmdutil.Factory, runF func(*prompterOptions) error) *cobr
 		markdownEditorPrompt:  runMarkdownEditor,
 	}
 
+	allPromptsOrder := []string{
+		selectPrompt,
+		multiSelectPrompt,
+		inputPrompt,
+		passwordPrompt,
+		confirmPrompt,
+		authTokenPrompt,
+		confirmDeletionPrompt,
+		inputHostnamePrompt,
+		markdownEditorPrompt,
+	}
+
 	cmd := &cobra.Command{
 		Use:   "prompter [prompt type]",
 		Short: "Execute a test program to preview the prompter",
@@ -73,8 +85,9 @@ func NewCmdPrompter(f *cmdutil.Factory, runF func(*prompterOptions) error) *cobr
 			}
 
 			if len(args) == 0 {
-				// All prompts
-				for _, f := range prompterTypeFuncMap {
+				// All prompts, in a fixed order
+				for _, promptType := range allPromptsOrder {
+					f := prompterTypeFuncMap[promptType]
 					opts.PromptsToRun = append(opts.PromptsToRun, f)
 				}
 			} else {
@@ -206,14 +219,14 @@ func runMarkdownEditor(p prompter.Prompter) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Returned text: %s\n", editorText)
+	fmt.Printf("Returned text: %s\n\n", editorText)
 
 	fmt.Println("Demonstrating Markdown Editor with blanks disallowed and default text")
 	editorText2, err := p.MarkdownEditor("Edit your text:", defaultText, false)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Returned text: %s\n", editorText2)
+	fmt.Printf("Returned text: %s\n\n", editorText2)
 
 	fmt.Println("Demonstrating Markdown Editor with blanks disallowed and no default text")
 	editorText3, err := p.MarkdownEditor("Edit your text:", "", false)
