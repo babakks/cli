@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 // Replace http.Client transport layer with registry so all requests get
@@ -32,10 +30,21 @@ func (r *Registry) Register(m Matcher, resp Responder) {
 }
 
 func (r *Registry) Exclude(t *testing.T, m Matcher) {
+	registrationStack := string(debug.Stack())
+
 	excludedStub := &Stub{
 		Matcher: m,
 		Responder: func(req *http.Request) (*http.Response, error) {
-			assert.FailNowf(t, "Exclude error", "API called when excluded: %v", req.URL)
+			callStack := string(debug.Stack())
+
+			var errMsg strings.Builder
+			errMsg.WriteString("HTTP call was made when it should have been excluded:\n")
+			errMsg.WriteString(fmt.Sprintf("Request URL: %s\n", req.URL))
+			errMsg.WriteString(fmt.Sprintf("Was excluded by: %s\n", registrationStack))
+			errMsg.WriteString(fmt.Sprintf("Was called from: %s\n", callStack))
+
+			t.Error(errMsg.String())
+			t.FailNow()
 			return nil, nil
 		},
 		exclude: true,

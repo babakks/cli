@@ -3,6 +3,7 @@ package comment
 import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/internal/ghrepo"
+	"github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	issueShared "github.com/cli/cli/v2/pkg/cmd/issue/shared"
 	prShared "github.com/cli/cli/v2/pkg/cmd/pr/shared"
 	"github.com/cli/cli/v2/pkg/cmdutil"
@@ -37,15 +38,41 @@ func NewCmdComment(f *cmdutil.Factory, runF func(*prShared.CommentableOptions) e
 		Args: cobra.ExactArgs(1),
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			opts.RetrieveCommentable = func() (prShared.Commentable, ghrepo.Interface, error) {
+				// TODO wm: more testing
+				issueNumber, parsedBaseRepo, err := shared.ParseIssueFromArg(args[0])
+				if err != nil {
+					return nil, nil, err
+				}
+
+				// If the args provided the base repo then use that directly.
+				var baseRepo ghrepo.Interface
+
+				if parsedBaseRepo, present := parsedBaseRepo.Value(); present {
+					baseRepo = parsedBaseRepo
+				} else {
+					// support `-R, --repo` override
+					baseRepo, err = f.BaseRepo()
+					if err != nil {
+						return nil, nil, err
+					}
+				}
+
 				httpClient, err := f.HttpClient()
 				if err != nil {
 					return nil, nil, err
 				}
+
 				fields := []string{"id", "url"}
 				if opts.EditLast {
 					fields = append(fields, "comments")
 				}
-				return issueShared.IssueFromArgWithFields(httpClient, f.BaseRepo, args[0], fields)
+
+				issue, err := issueShared.FindIssueOrPR(httpClient, baseRepo, issueNumber, fields)
+				if err != nil {
+					return nil, nil, err
+				}
+
+				return issue, baseRepo, nil
 			}
 			return prShared.CommentablePreRun(cmd, opts)
 		},

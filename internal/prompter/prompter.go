@@ -2,13 +2,12 @@ package prompter
 
 import (
 	"fmt"
-	"os"
-	"slices"
 	"strings"
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/charmbracelet/huh"
 	"github.com/cli/cli/v2/internal/ghinstance"
+	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/cli/cli/v2/pkg/surveyext"
 	ghPrompter "github.com/cli/go-gh/v2/pkg/prompter"
 )
@@ -43,24 +42,21 @@ type Prompter interface {
 	MarkdownEditor(prompt string, defaultValue string, blankAllowed bool) (string, error)
 }
 
-func New(editorCmd string, stdin ghPrompter.FileReader, stdout ghPrompter.FileWriter, stderr ghPrompter.FileWriter) Prompter {
-	accessiblePrompterValue, accessiblePrompterIsSet := os.LookupEnv("GH_ACCESSIBLE_PROMPTER")
-	falseyValues := []string{"false", "0", "no", ""}
-
-	if accessiblePrompterIsSet && !slices.Contains(falseyValues, accessiblePrompterValue) {
+func New(editorCmd string, io *iostreams.IOStreams) Prompter {
+	if io.AccessiblePrompterEnabled() {
 		return &accessiblePrompter{
-			stdin:     stdin,
-			stdout:    stdout,
-			stderr:    stderr,
+			stdin:     io.In,
+			stdout:    io.Out,
+			stderr:    io.ErrOut,
 			editorCmd: editorCmd,
 		}
 	}
 
 	return &surveyPrompter{
-		prompter:  ghPrompter.New(stdin, stdout, stderr),
-		stdin:     stdin,
-		stdout:    stdout,
-		stderr:    stderr,
+		prompter:  ghPrompter.New(io.In, io.Out, io.ErrOut),
+		stdin:     io.In,
+		stdout:    io.Out,
+		stderr:    io.ErrOut,
 		editorCmd: editorCmd,
 	}
 }
@@ -141,10 +137,12 @@ func (p *accessiblePrompter) Input(prompt, defaultValue string) (string, error) 
 
 func (p *accessiblePrompter) Password(prompt string) (string, error) {
 	var result string
-	// EchoMode(huh.EchoModePassword) doesn't have any effect in accessible mode.
+	// EchoModePassword is not used as password masking is unsupported in huh.
+	// EchoModeNone and EchoModePassword have the same effect of hiding user input.
 	form := p.newForm(
 		huh.NewGroup(
 			huh.NewInput().
+				EchoMode(huh.EchoModeNone).
 				Title(prompt).
 				Value(&result),
 		),
@@ -175,9 +173,12 @@ func (p *accessiblePrompter) Confirm(prompt string, defaultValue bool) (bool, er
 
 func (p *accessiblePrompter) AuthToken() (string, error) {
 	var result string
+	// EchoModeNone and EchoModePassword both result in disabling echo mode
+	// as password masking is outside of VT100 spec.
 	form := p.newForm(
 		huh.NewGroup(
 			huh.NewInput().
+				EchoMode(huh.EchoModeNone).
 				Title("Paste your authentication token:").
 				// Note: if this validation fails, the prompt loops.
 				Validate(func(input string) error {
@@ -187,8 +188,6 @@ func (p *accessiblePrompter) AuthToken() (string, error) {
 					return nil
 				}).
 				Value(&result),
-			// This doesn't have any effect in accessible mode.
-			// EchoMode(huh.EchoModePassword),
 		),
 	)
 
