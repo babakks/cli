@@ -114,7 +114,7 @@ func prompterRun(opts *prompterOptions) error {
 		return err
 	}
 
-	p := prompter.New(editor, opts.IO.In, opts.IO.Out, opts.IO.ErrOut)
+	p := prompter.New(editor, opts.IO)
 
 	for _, f := range opts.PromptsToRun {
 		if err := f(p); err != nil {
