@@ -1,0 +1,55 @@
+name: Test winres embedded resources
+run-name: ${{ inputs.tag_name }} / ${{ inputs.environment }}
+
+permissions:
+  attestations: write
+  contents: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name to validate and use for the release'
+        required: true
+        type: string
+
+jobs:
+  validate-tag-name:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate tag name format
+        run: |
+          if [[ ! "${{ inputs.tag_name }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid tag name format. Must be in the form v1.2.3"
+            exit 1
+          fi
+
+  windows:
+    needs: validate-tag-name
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+      - name: Install GoReleaser
+        uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552
+        with:
+          version: "~1.17.1"
+          install-only: true
+      - name: Build release binaries
+        shell: bash
+        env:
+          TAG_NAME: ${{ inputs.tag_name }}
+        run: script/release --local "$TAG_NAME" --platform windows
+      - name: Upload binaries as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          if-no-files-found: error
+          retention-days: 7
+          path: |
+            dist/*.zip
