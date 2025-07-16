@@ -16,7 +16,7 @@ jobs:
       - name: Run spam detection
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ISSUE_URL: ${{ github.event.issue.url }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
         run: |
           ./.github/workflows/scripts/spam-detection/process-issue.sh "$ISSUE_URL"
           if [[ $? -ne 0 ]]; then
