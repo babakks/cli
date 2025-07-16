@@ -6,7 +6,7 @@ on:
 permissions:
   contents: none
   issues: write
-
+  models: read
 jobs:
   issue-spam:
     runs-on: ubuntu-latest
