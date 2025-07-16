@@ -15,6 +15,7 @@ jobs:
         uses: actions/checkout@v4
       - name: Run spam detection
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ISSUE_URL: ${{ github.event.issue.url }}
         run: |
           ./.github/workflows/scripts/spam-detection/process-issue.sh "$ISSUE_URL"
