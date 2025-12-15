@@ -30,7 +30,7 @@ builds:
 
   - id: linux #build:linux
     goos: [linux]
-    goarch: [386, arm, amd64, arm64]
+    goarch: ["386", arm, amd64, arm64]
     env:
       - CGO_ENABLED=0
     binary: bin/gh
@@ -40,7 +40,7 @@ builds:
 
   - id: windows #build:windows
     goos: [windows]
-    goarch: [386, amd64, arm64]
+    goarch: ["386", amd64, arm64]
     hooks:
       post:
         - cmd: pwsh .\script\sign.ps1 '{{ .Path }}'
